@@ -1,0 +1,19 @@
+{
+  "name": "execution-engine",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bullmq": "^5.66.5",
+    "dockerode": "^4.0.9",
+    "express": "^5.2.1",
+    "ioredis": "^5.9.1"
+  }
+}
