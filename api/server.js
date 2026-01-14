@@ -8,17 +8,38 @@ app.use(express.json());
  * Submit a job
  */
 app.post("/run", async (req, res) => {
-  const { code, language } = req.body;
+  const { code, language, priority } = req.body;
 
   if (!code || !language) {
-    return res.status(400).json({ error: "code and language are required" });
+    return res.status(400).json({
+      error: "code and language are required",
+    });
   }
 
-  const job = await executionQueue.add("execute", { code, language });
+  const job = await executionQueue.add(
+    "execute",
+    { code, language },
+    {
+      // 🔁 Retry + backoff
+      attempts: 3,
+      backoff: {
+        type: "exponential",
+        delay: 1000, // 1s → 2s → 4s
+      },
+
+      // ⚡ Priority (lower = higher priority)
+      priority: Number.isInteger(priority) ? priority : 10,
+
+      // 🧹 Cleanup policy
+      removeOnComplete: true,
+      removeOnFail: false, // keep failed jobs for DLQ
+    }
+  );
 
   res.json({
     jobId: job.id,
     status: "queued",
+    priority: job.opts.priority,
   });
 });
 
