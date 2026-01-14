@@ -1,12 +1,17 @@
 const { Worker } = require("bullmq");
+const IORedis = require("ioredis");
 const connection = require("../queue/connection");
 const { executeJob } = require("../executor/executeJob");
 
+const redis = new IORedis({
+  host: process.env.REDIS_HOST || "redis",
+  port: 6379,
+  maxRetriesPerRequest: null,
+});
+
 function isUserError(err) {
   if (!err) return false;
-
   const msg = err.message || "";
-
   return (
     msg.includes("Time Limit Exceeded") ||
     msg.includes("fork") ||
@@ -21,28 +26,36 @@ new Worker(
   "execution",
   async (job) => {
     try {
-      const { language, code } = job.data;
+      const result = await executeJob(job.data);
 
-      // Execute sandboxed job
-      const result = await executeJob({ language, code });
+      // ✅ STORE RESULT (CRITICAL)
+      await redis.set(
+        `job:result:${job.id}`,
+        JSON.stringify(result),
+        "EX",
+        300 // TTL 5 minutes
+      );
 
-      // ✅ SUCCESS → no retry
-      return {
-        ...result,
-        attemptsMade: job.attemptsMade,
-      };
+      return result;
     } catch (err) {
-      // ❌ USER ERROR → DO NOT RETRY
       if (isUserError(err)) {
-        return {
+        const result = {
           output: "",
           exitCode: 1,
           error: err.message,
-          attemptsMade: job.attemptsMade,
         };
+
+        await redis.set(
+          `job:result:${job.id}`,
+          JSON.stringify(result),
+          "EX",
+          300
+        );
+
+        return result;
       }
 
-      // 🔁 INFRA ERROR → RETRY (BullMQ handles backoff)
+      // 🔁 infra error → retry
       throw err;
     }
   },

@@ -23,7 +23,7 @@ services:
       - redis
     environment:
       - REDIS_HOST=redis
-      - HOST_CWD=${PWD}
+      - HOST_TMP=${PWD}/host-tmp
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./temp:/app/temp
+      - ./host-tmp:/host-tmp

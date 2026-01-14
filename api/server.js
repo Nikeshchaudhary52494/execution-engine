@@ -4,11 +4,26 @@ const { executionQueue } = require("../queue/queue");
 const app = express();
 app.use(express.json());
 
+const IORedis = require("ioredis");
+
+const redis = new IORedis({
+  host: process.env.REDIS_HOST || "redis", // docker service name
+  port: 6379,
+  maxRetriesPerRequest: null,
+});
+
 /**
  * Submit a job
  */
-app.post("/run", async (req, res) => {
-  const { code, language, priority } = req.body;
+app.post("/v1/jobs", async (req, res) => {
+  const {
+    code,
+    language,
+    priority = 10,
+    stdin = "",
+    timeoutMs = 3000,
+    metadata = {},
+  } = req.body;
 
   if (!code || !language) {
     return res.status(400).json({
@@ -18,56 +33,59 @@ app.post("/run", async (req, res) => {
 
   const job = await executionQueue.add(
     "execute",
-    { code, language },
     {
-      // 🔁 Retry + backoff
+      code,
+      language,
+      stdin,
+      timeoutMs,
+      metadata,
+    },
+    {
+      priority,
       attempts: 3,
       backoff: {
         type: "exponential",
-        delay: 1000, // 1s → 2s → 4s
+        delay: 1000,
       },
-
-      // ⚡ Priority (lower = higher priority)
-      priority: Number.isInteger(priority) ? priority : 10,
-
-      // 🧹 Cleanup policy
       removeOnComplete: true,
-      removeOnFail: false, // keep failed jobs for DLQ
+      removeOnFail: false,
     }
   );
 
-  res.json({
+  res.status(202).json({
     jobId: job.id,
     status: "queued",
-    priority: job.opts.priority,
   });
 });
 
 /**
  * Get job result
  */
-app.get("/result/:id", async (req, res) => {
-  const job = await executionQueue.getJob(req.params.id);
+app.get("/v1/jobs/:id", async (req, res) => {
+  const jobId = req.params.id;
 
+  // 1️⃣ CHECK FINAL RESULT (PRIMARY SOURCE)
+  const result = await redis.get(`job:result:${jobId}`);
+  if (result) {
+    return res.json({
+      status: "completed",
+      ...JSON.parse(result),
+    });
+  }
+
+  // 2️⃣ CHECK QUEUE (JOB STILL RUNNING)
+  const job = await executionQueue.getJob(jobId);
   if (!job) {
-    return res.status(404).json({ error: "Job not found" });
+    return res.status(404).json({
+      error: "Job not found",
+    });
   }
 
   const state = await job.getState();
 
-  if (state === "completed") {
-    const result = await job.returnvalue;
-    return res.json(result);
-  }
-
-  if (state === "failed") {
-    return res.json({
-      error: job.failedReason,
-      exitCode: 1,
-    });
-  }
-
-  res.json({ status: state }); // waiting | active | delayed
+  return res.json({
+    status: state === "waiting" || state === "delayed" ? "queued" : "running",
+  });
 });
 
 app.listen(3001, () => {
