@@ -1,17 +1,10 @@
-const express = require("express");
 const Docker = require("dockerode");
 const fs = require("fs");
 const path = require("path");
 const stream = require("stream");
 
-const app = express();
 const docker = new Docker();
 
-app.use(express.json());
-
-/**
- * Language configurations
- */
 const languageConfigs = {
   python: {
     image: "python:3.9-alpine",
@@ -46,20 +39,22 @@ const languageConfigs = {
   },
 };
 
-app.post("/run", async (req, res) => {
-  const { code, language } = req.body;
+async function executeJob({ code, language }) {
   const config = languageConfigs[language];
-
   if (!config) {
-    return res.status(400).json({ error: "Unsupported language" });
+    return { error: "Unsupported language", exitCode: 400 };
   }
 
   const jobId = Math.random().toString(36).substring(7);
   const fileName = `Main_${jobId}.${config.extension}`;
-  const folderPath = path.join(__dirname, "temp");
-  const filePath = path.join(folderPath, fileName);
 
-  if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath);
+  const hostCwd = process.env.HOST_CWD;
+  const folderPath = hostCwd ? path.join(hostCwd, "temp") : path.join(__dirname, "..", "temp");
+  
+  const tempPath = path.join(__dirname, "..", "temp");
+  const filePath = path.join(tempPath, fileName);
+
+  if (!fs.existsSync(tempPath)) fs.mkdirSync(tempPath);
   fs.writeFileSync(filePath, code);
 
   let container;
@@ -68,7 +63,7 @@ app.post("/run", async (req, res) => {
   let killedByOutputSpam = false;
 
   const TIME_LIMIT_MS = 3000;
-  const MAX_RUNTIME_OUTPUT = 4096; // 4 KB
+  const MAX_RUNTIME_OUTPUT = 4096;
 
   try {
     container = await docker.createContainer({
@@ -111,7 +106,6 @@ app.post("/run", async (req, res) => {
 
     stdout.on("data", handleChunk);
     stderr.on("data", handleChunk);
-
     docker.modem.demuxStream(attachStream, stdout, stderr);
 
     await container.start();
@@ -130,81 +124,49 @@ app.post("/run", async (req, res) => {
       await Promise.race([container.wait(), timeoutPromise]);
     } catch (_) {}
 
-    /**
-     * ⏱ TIME LIMIT (HIGHEST PRIORITY)
-     */
+    // ⏱ TIME LIMIT
     if (killedByTimeout) {
-      return res.json({
-        output: "",
+      return {
         error: "Time Limit Exceeded (program ran too long)",
         exitCode: 124,
-      });
+      };
     }
 
-    /**
-     * 💣 FORK BOMB — JS / PYTHON
-     */
+    // 💣 Fork bomb (JS / Python)
     const forkBombSignatures = [
       "pthread_create",
       "Resource temporarily unavailable",
       "uv_thread_create",
     ];
-
     if (forkBombSignatures.some((sig) => output.includes(sig))) {
-      return res.json({
-        output: "",
+      return {
         error: "Process limit exceeded (possible fork bomb)",
         exitCode: 137,
-      });
+      };
     }
 
-    /**
-     * 💣 FORK BOMB — C++
-     */
+    // 💣 Fork bomb (C++)
     if (language === "cpp" && output.trim() === "Killed") {
-      return res.json({
-        output: "",
+      return {
         error: "Process limit exceeded (possible fork bomb)",
         exitCode: 137,
-      });
+      };
     }
 
-    /**
-     * 🧹 READ-ONLY FILE SYSTEM — Python / JS
-     */
+    // 🔒 Read-only FS
     if (
       output.includes("Read-only file system") ||
-      output.includes("Errno 30")
+      output.includes("Errno 30") ||
+      (language === "cpp" && output.trim() === "")
     ) {
-      return res.json({
-        output: "",
+      return {
         error: "Write access denied: file system is read-only",
         exitCode: 1,
-      });
-    }
-
-    /**
-     * 🧹 READ-ONLY FILE SYSTEM — C++ (silent failure)
-     */
-    if (language === "cpp" && output.trim() === "") {
-      return res.json({
-        output: "",
-        error: "Write access denied: file system is read-only",
-        exitCode: 1,
-      });
+      };
     }
 
     const info = await container.inspect();
-
-    res.json({
-      output: output.trim(),
-      exitCode: info.State.ExitCode,
-    });
-  } catch (err) {
-    res.status(500).json({
-      error: "Execution failed",
-      details: err.message,
-    });
+    return { output: output.trim(), exitCode: info.State.ExitCode };
   } finally {
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     if (container) {
@@ -213,9 +175,6 @@ app.post("/run", async (req, res) => {
       } catch (_) {}
     }
   }
-});
+}
 
-const PORT = 3001;
-app.listen(PORT, () => {
-  console.log(`🚀 Secure Execution Engine running at http://localhost:${PORT}`);
-});
+module.exports = { executeJob };
