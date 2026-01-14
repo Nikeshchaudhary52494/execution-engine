@@ -20,7 +20,7 @@ app.post("/v1/jobs", async (req, res) => {
     code,
     language,
     priority = 10,
-    stdin = "",
+    // stdin = "",
     timeoutMs = 3000,
     metadata = {},
   } = req.body;
@@ -36,7 +36,7 @@ app.post("/v1/jobs", async (req, res) => {
     {
       code,
       language,
-      stdin,
+      // stdin,
       timeoutMs,
       metadata,
     },
