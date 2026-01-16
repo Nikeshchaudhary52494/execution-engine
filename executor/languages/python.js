@@ -1,9 +1,9 @@
-module.exports = {
+export default {
   name: "python",
   image: "python:3.9-alpine",
   extension: "py",
 
-  command(file) {
+  command: (file) => {
     return ["python3", file];
   },
 

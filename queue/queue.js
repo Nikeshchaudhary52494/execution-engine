@@ -1,8 +1,6 @@
-const { Queue } = require("bullmq");
-const connection = require("./connection");
+import { Queue } from "bullmq";
+import connection from "./connection.js";
 
-const executionQueue = new Queue("execution", {
+export const executionQueue = new Queue("execution", {
   connection,
 });
-
-module.exports = { executionQueue };

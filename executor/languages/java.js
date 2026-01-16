@@ -1,9 +1,9 @@
-module.exports = {
+export default {
   name: "java",
   image: "bellsoft/liberica-openjdk-alpine:17",
   extension: "java",
 
-  command(file) {
+  command: (file) => {
     const cls = file.replace(".java", "");
     return [
       "sh",

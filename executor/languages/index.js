@@ -1,16 +1,16 @@
-const python = require("./python");
-const javascript = require("./javascript");
-const cpp = require("./cpp");
-const java = require("./java");
+import python from "./python.js";
+import javascript from "./javascript.js";
+import cpp from "./cpp.js";
+import java from "./java.js";
 
 const registry = new Map();
 
 [python, javascript, cpp, java].forEach((lang) => {
-  registry.set(lang.name, lang);
+  if (lang) {
+    registry.set(lang.name, lang);
+  }
 });
 
-function getLanguage(name) {
+export const getLanguage = (name) => {
   return registry.get(name);
 }
-
-module.exports = { getLanguage };

@@ -1,5 +1,5 @@
-const { QueueEvents } = require("bullmq");
-const connection = require("../queue/connection");
+import { QueueEvents } from "bullmq";
+import connection from "../queue/connection.js";
 
 const queueEvents = new QueueEvents("execution", { connection });
 
@@ -13,4 +13,4 @@ queueEvents.on("failed", async ({ jobId, failedReason }) => {
   // 3. Push to another queue
 });
 
-module.exports = queueEvents;
+export default queueEvents;

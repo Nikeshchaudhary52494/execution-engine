@@ -1,9 +1,9 @@
-module.exports = {
+export default {
   name: "cpp",
   image: "gcc:latest",
   extension: "cpp",
 
-  command(file) {
+  command: (file) => {
     return [
       "sh",
       "-c",
@@ -11,7 +11,7 @@ module.exports = {
     ];
   },
 
-  detectForkBomb(output) {
+  detectForkBomb: (output) => {
     return output.trim() === "Killed";
   },
 };

@@ -1,9 +1,9 @@
-module.exports = {
+export default {
   name: "javascript",
   image: "node:18-alpine",
   extension: "js",
 
-  command(file) {
+  command: (file) => {
     return ["node", file];
   },
 

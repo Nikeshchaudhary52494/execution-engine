@@ -1,15 +1,9 @@
-const { Worker } = require("bullmq");
-const IORedis = require("ioredis");
-const connection = require("../queue/connection");
-const { executeJob } = require("../executor/executeJob");
+import { Worker } from "bullmq";
+import connection from "../queue/connection.js";
+import { executeJob } from "../executor/index.js";
+import redis from "../api/config/redis.js";
 
-const redis = new IORedis({
-  host: process.env.REDIS_HOST || "redis",
-  port: 6379,
-  maxRetriesPerRequest: null,
-});
-
-function isUserError(err) {
+const isUserError = (err) => {
   if (!err) return false;
   const msg = err.message || "";
   return (
@@ -20,13 +14,14 @@ function isUserError(err) {
     msg.includes("SyntaxError") ||
     msg.includes("ReferenceError")
   );
-}
+};
 
 new Worker(
   "execution",
   async (job) => {
     try {
       const result = await executeJob(job.data);
+      console.log(`Storing result for job ${job.id}`, result);
 
       // ✅ STORE RESULT (CRITICAL)
       await redis.set(
